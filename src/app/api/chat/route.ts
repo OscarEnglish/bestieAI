@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const relationship = await prisma.relationshipState.findUnique({
+    let relationship = await prisma.relationshipState.findUnique({
       where: {
         userId_personaId: {
           userId: user.id,
@@ -62,17 +62,50 @@ export async function GET(req: NextRequest) {
       include: {
         boundaries: true,
         messages: {
-          orderBy: { timestamp: "desc" },
-          take: 10,
+          orderBy: { timestamp: "asc" },
+          take: 50,
         },
       },
     });
 
+    if (relationship) {
+      const now = new Date();
+      if (
+        relationship.current_mood === "ANGRY" &&
+        relationship.cooldown_until &&
+        new Date(relationship.cooldown_until) <= now
+      ) {
+        relationship = await prisma.relationshipState.update({
+          where: { id: relationship.id },
+          data: {
+            current_mood: "NEUTRAL",
+            cooldown_until: null,
+            offense_tier: 0,
+          },
+          include: {
+            boundaries: true,
+            messages: {
+              orderBy: { timestamp: "asc" },
+              take: 50,
+            },
+          },
+        });
+      }
+    }
+
+    const isLocked = Boolean(
+      relationship &&
+        relationship.current_mood === "ANGRY" &&
+        relationship.cooldown_until &&
+        new Date(relationship.cooldown_until) > new Date()
+    );
+
     return NextResponse.json({
       status: "ready",
       user: { id: user.id, name: user.name },
-      persona: { id: persona.id, name: persona.name },
+      persona: { id: persona.id, name: persona.name, temperament: persona.temperament },
       relationship,
+      is_locked: isLocked,
     });
   } catch (error: any) {
     return NextResponse.json(
