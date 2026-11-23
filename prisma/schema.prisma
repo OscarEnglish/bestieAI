@@ -1,0 +1,94 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Mood {
+  NEUTRAL
+  ANNOYED
+  ANGRY
+}
+
+enum FlagColor {
+  RED
+  ORANGE
+  YELLOW
+  GREEN
+}
+
+model User {
+  id                 String              @id @default(cuid())
+  email              String?             @unique
+  name               String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  relationshipStates RelationshipState[]
+  messages           Message[]
+}
+
+model Persona {
+  id                 String              @id @default(cuid())
+  name               String              @unique
+  temperament        String
+  base_triggers      String              // JSON or string formatted triggers
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  relationshipStates RelationshipState[]
+  messages           Message[]
+}
+
+model RelationshipState {
+  id               String            @id @default(cuid())
+  userId           String
+  personaId        String
+  friendship_score Int               @default(50) // Scale 0-100
+  tier             String            @default("Acquaintance")
+  current_mood     Mood              @default(NEUTRAL)
+  cooldown_until   DateTime?
+  offense_tier     Int               @default(0)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  persona          Persona           @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  boundaries       DynamicBoundary[]
+  messages         Message[]
+
+  @@unique([userId, personaId])
+}
+
+model DynamicBoundary {
+  id                  String            @id @default(cuid())
+  relationshipStateId String
+  topic               String
+  flag_color          FlagColor         @default(GREEN)
+  notes               String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  relationshipState   RelationshipState @relation(fields: [relationshipStateId], references: [id], onDelete: Cascade)
+}
+
+model Message {
+  id                  String             @id @default(cuid())
+  relationshipStateId String?
+  userId              String?
+  personaId           String?
+  role                String             // "user" | "assistant" | "system"
+  content             String
+  sentiment_score     Float              @default(0.0)
+  timestamp           DateTime           @default(now())
+
+  relationshipState   RelationshipState? @relation(fields: [relationshipStateId], references: [id], onDelete: Cascade)
+  user                User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  persona             Persona?           @relation(fields: [personaId], references: [id], onDelete: SetNull)
+}
