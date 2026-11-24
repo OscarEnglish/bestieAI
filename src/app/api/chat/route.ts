@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { processChatMessage } from "@/lib/state-machine";
+import { hasGeminiApiKey } from "@/lib/gemini";
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,7 +22,10 @@ export async function POST(req: NextRequest) {
       message: message.trim(),
     });
 
-    return NextResponse.json(result, { status: 200 });
+    return NextResponse.json({
+      ...result,
+      has_gemini_key: hasGeminiApiKey(),
+    }, { status: 200 });
   } catch (error: any) {
     console.error("Error in /api/chat handler:", error);
     return NextResponse.json(
@@ -106,6 +110,7 @@ export async function GET(req: NextRequest) {
       persona: { id: persona.id, name: persona.name, temperament: persona.temperament },
       relationship,
       is_locked: isLocked,
+      has_gemini_key: hasGeminiApiKey(),
     });
   } catch (error: any) {
     return NextResponse.json(

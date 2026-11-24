@@ -12,6 +12,9 @@ import {
   User,
   Clock,
   CheckCircle2,
+  Key,
+  X,
+  ExternalLink,
 } from "lucide-react";
 
 interface MessageItem {
@@ -37,12 +40,18 @@ export default function BestieChatPage() {
   const [offenseTier, setOffenseTier] = useState<number>(0);
   const [isLocked, setIsLocked] = useState<boolean>(false);
   const [persona, setPersona] = useState<PersonaInfo | null>(null);
+  const [hasGeminiKey, setHasGeminiKey] = useState<boolean>(true);
 
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [resetting, setResetting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<string>("");
+
+  // Modal for setting Gemini API key
+  const [showKeyModal, setShowKeyModal] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [savingKey, setSavingKey] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -65,6 +74,10 @@ export default function BestieChatPage() {
 
         if (data.persona) {
           setPersona(data.persona);
+        }
+
+        if (typeof data.has_gemini_key === "boolean") {
+          setHasGeminiKey(data.has_gemini_key);
         }
 
         if (data.relationship) {
@@ -130,7 +143,7 @@ export default function BestieChatPage() {
   // Toast auto-clear
   useEffect(() => {
     if (toast) {
-      const timer = setTimeout(() => setToast(null), 3500);
+      const timer = setTimeout(() => setToast(null), 4000);
       return () => clearTimeout(timer);
     }
   }, [toast]);
@@ -152,6 +165,33 @@ export default function BestieChatPage() {
       setToast(err.message || "Failed to reset dev state");
     } finally {
       setResetting(false);
+    }
+  };
+
+  // Handle Saving Gemini API Key
+  const handleSaveApiKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!apiKeyInput.trim()) return;
+
+    try {
+      setSavingKey(true);
+      const res = await fetch("/api/dev/set-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: apiKeyInput.trim() }),
+      });
+
+      if (!res.ok) throw new Error("Failed to save key");
+      const data = await res.json();
+
+      setHasGeminiKey(true);
+      setShowKeyModal(false);
+      setApiKeyInput("");
+      setToast("✨ Gemini API Key connected! Live gemini-2.5-flash is now active.");
+    } catch (err: any) {
+      setToast(err.message || "Failed to save key");
+    } finally {
+      setSavingKey(false);
     }
   };
 
@@ -186,6 +226,10 @@ export default function BestieChatPage() {
 
       const data = await res.json();
 
+      if (typeof data.has_gemini_key === "boolean") {
+        setHasGeminiKey(data.has_gemini_key);
+      }
+
       // Append assistant reply
       const assistantMsg: MessageItem = {
         role: "assistant",
@@ -206,7 +250,7 @@ export default function BestieChatPage() {
         setIsLocked(data.is_locked);
       }
 
-      // Show toast if state shifted
+      // State shift notifications
       if (data.is_locked && data.evaluation?.offense_tier > 0) {
         setToast(`Offense detected (Tier ${data.evaluation.offense_tier}). Emotional cooldown active.`);
       } else if (data.evaluation?.is_apology && data.evaluation?.apology_sincerity >= 75) {
@@ -253,7 +297,7 @@ export default function BestieChatPage() {
             : "bg-slate-900/60 border-slate-800/80"
         }`}
       >
-        <div className="max-w-4xl mx-auto px-4 py-3.5 flex items-center justify-between">
+        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
           {/* Persona Header Info */}
           <div className="flex items-center gap-3">
             <div
@@ -321,8 +365,29 @@ export default function BestieChatPage() {
             </div>
           </div>
 
-          {/* Dev Reset Action Button */}
+          {/* Action Buttons: API Key & Dev Reset */}
           <div className="flex items-center gap-2">
+            {/* Gemini Status / Config Button */}
+            <button
+              onClick={() => setShowKeyModal(true)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium border transition-all duration-300 ${
+                hasGeminiKey
+                  ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20"
+                  : "bg-amber-500/10 text-amber-300 border-amber-500/40 hover:bg-amber-500/20 animate-pulse"
+              }`}
+              title={
+                hasGeminiKey
+                  ? "Gemini 2.5 Flash is active"
+                  : "Click to configure Gemini API Key"
+              }
+            >
+              <Key className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">
+                {hasGeminiKey ? "Gemini 2.5 Active" : "Add Gemini Key"}
+              </span>
+            </button>
+
+            {/* Dev Reset Action Button */}
             <button
               onClick={handleDevReset}
               disabled={resetting}
@@ -338,6 +403,24 @@ export default function BestieChatPage() {
             </button>
           </div>
         </div>
+
+        {/* Offline Notice Banner if key is missing */}
+        {!hasGeminiKey && (
+          <div className="bg-amber-500/10 border-t border-b border-amber-500/20 px-4 py-1.5 text-xs text-amber-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+              <span>
+                Running in <strong>offline companion simulation</strong> mode. Connect your Gemini API Key for live AI responses.
+              </span>
+            </div>
+            <button
+              onClick={() => setShowKeyModal(true)}
+              className="underline text-amber-300 hover:text-white font-medium ml-2"
+            >
+              Configure Key
+            </button>
+          </div>
+        )}
       </header>
 
       {/* Main Chat Container */}
@@ -519,6 +602,75 @@ export default function BestieChatPage() {
           </div>
         </form>
       </main>
+
+      {/* Gemini API Key Configuration Modal */}
+      {showKeyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white">
+                  <Key className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold text-white">Google Gemini API Key</h2>
+                  <p className="text-xs text-slate-400">Powering gemini-2.5-flash</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowKeyModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Enter your Google Gemini API key to enable live AI reasoning, structured boundary evaluation, and persona replies.
+            </p>
+
+            <form onSubmit={handleSaveApiKey} className="space-y-3">
+              <input
+                type="password"
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                placeholder="AIzaSy..."
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-sky-500 transition-colors"
+                autoFocus
+              />
+
+              <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1 text-sky-400 hover:underline"
+                >
+                  <span>Get a free key from Google AI Studio</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowKeyModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-medium text-slate-300 hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!apiKeyInput.trim() || savingKey}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white disabled:opacity-40"
+                >
+                  {savingKey ? "Saving..." : "Connect Key"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
